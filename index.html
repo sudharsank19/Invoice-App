@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Advanced Product Billing System</title>
+
+    <!-- jsPDF CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        :root {
+            --bg: #ffffff;
+            --text: #222;
+            --card: #ffffff;
+            --table-header: #3f51b5;
+            --table-header-text: #fff;
+        }
+
+        body.dark {
+            --bg: #121212;
+            --text: #ffffff;
+            --card: #1e1e1e;
+            --table-header: #673ab7;
+            --table-header-text: #fff;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 30px;
+            transition: 0.3s;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        .theme-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 15px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background: #673ab7;
+            color: white;
+        }
+
+        .form-container {
+            max-width: 900px;
+            margin: auto;
+            background: var(--card);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 18px rgba(0,0,0,0.3);
+        }
+
+        input {
+            padding: 10px;
+            margin: 8px 5px;
+            border-radius: 6px;
+            border: 1px solid #bbb;
+            width: 180px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #673ab7;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: center;
+        }
+
+        th {
+            background: var(--table-header);
+            color: var(--table-header-text);
+        }
+
+        td[contenteditable="true"] {
+            background: rgba(255,255,0,0.2);
+        }
+
+        img {
+         width: 150px;          /* slightly bigger */
+            height: 150px;         /* same height */
+            border-radius: 8px;
+            object-fit: contain;  /* ⭐ fits inside without stretching */
+            background: #eee;     /* optional soft background */
+            padding: 3px;         /* optional margin inside */
+    }
+
+
+        .total-row {
+            background: gold;
+            font-weight: bold;
+        }
+
+        .actions {
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        .actions button {
+            margin-left: 10px;
+        }
+
+
+    </style>
+</head>
+<body>
+
+<button class="theme-btn" onclick="toggleTheme()">Switch Theme</button>
+
+<h2>Advanced Product Billing System</h2>
+
+<div class="form-container">
+
+    <label>Product Name:</label>
+    <input type="text" id="name">
+
+    <label>Product Image:</label>
+    <input type="file" id="imageFile" accept="image/*">
+
+    <label>Price:</label>
+    <input type="number" id="price">
+
+    <label>Quantity:</label>
+    <input type="number" id="quantity" value="1" min="1">
+
+    <button onclick="addProduct()">Add Product</button>
+
+    <table id="productTable">
+        <thead>
+        <tr>
+            <th>S.No</th>
+            <th>Product</th>
+            <th>Image</th>
+            <th>Price</th>
+            <th>Qty</th>
+            <th>Total</th>
+            <th>Remove</th>
+        </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+        <tfoot>
+        <tr class="total-row">
+            <td colspan="5">Grand Total</td>
+            <td id="grandTotal">0</td>
+            <td></td>
+        </tr>
+        </tfoot>
+    </table>
+
+
+
+    <div class="actions">
+        <button onclick="generatePDF()">Download PDF Invoice</button>
+        <button onclick="clearAll()">Clear All</button>
+    </div>
+
+</div>
+
+<script>
+    let products = [];
+
+    // Load storage
+    window.onload = function() {
+        const saved = localStorage.getItem("products");
+        if (saved) {
+            products = JSON.parse(saved);
+            products.forEach(addToTable);
+        }
+        updateTotal();
+    };
+
+    function addProduct() {
+        const name = document.getElementById("name").value;
+        const price = parseFloat(document.getElementById("price").value);
+        const quantity = parseInt(document.getElementById("quantity").value || 1);
+        const file = document.getElementById("imageFile").files[0];
+
+        if (!name || !price || !file) {
+            alert("Enter product name, price and image.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const product = {
+                name,
+                image: e.target.result,
+                price,
+                quantity,
+                total: price * quantity
+            };
+
+            products.push(product);
+            saveToLocal();
+            addToTable(product);
+
+            document.getElementById("name").value = "";
+            document.getElementById("price").value = "";
+            document.getElementById("quantity").value = 1;
+            document.getElementById("imageFile").value = "";
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function addToTable(product) {
+        const tbody = document.getElementById("tableBody");
+        const row = document.createElement("tr");
+
+        row.innerHTML = `
+            <td></td>
+            <td contenteditable="true" oninput="editRow(this)">${product.name}</td>
+            <td><img src="${product.image}"></td>
+            <td contenteditable="true" oninput="editRow(this)">${product.price}</td>
+            <td contenteditable="true" oninput="editRow(this)">${product.quantity}</td>
+            <td>${product.total}</td>
+            <td><button onclick="removeRow(this)">❌</button></td>
+        `;
+
+        tbody.appendChild(row);
+        reorderSerialNumbers();
+        updateTotal();
+    }
+
+    function editRow(cell) {
+        const row = cell.parentNode;
+        const index = row.rowIndex - 1;
+
+        const name = row.cells[1].innerText;
+        const price = parseFloat(row.cells[3].innerText);
+        const qty = parseInt(row.cells[4].innerText);
+
+        if (!isNaN(price) && !isNaN(qty)) {
+            const total = price * qty;
+            row.cells[5].innerText = total;
+
+            products[index].name = name;
+            products[index].price = price;
+            products[index].quantity = qty;
+            products[index].total = total;
+
+            saveToLocal();
+            updateTotal();
+        }
+    }
+
+    function removeRow(btn) {
+        const row = btn.parentNode.parentNode;
+        const index = row.rowIndex - 1;
+
+        products.splice(index, 1);
+        row.remove();
+        saveToLocal();
+        reorderSerialNumbers();
+        updateTotal();
+    }
+
+    function reorderSerialNumbers() {
+        const tbody = document.getElementById("tableBody");
+        [...tbody.rows].forEach((row, i) => {
+            row.cells[0].innerText = i + 1;
+        });
+    }
+
+    function updateTotal() {
+        const total = products.reduce((sum, p) => sum + p.total, 0);
+        document.getElementById("grandTotal").innerText = total;
+    }
+
+    function saveToLocal() {
+        localStorage.setItem("products", JSON.stringify(products));
+    }
+
+    function clearAll() {
+        if (!confirm("Clear all products?")) return;
+        products = [];
+        saveToLocal();
+        document.getElementById("tableBody").innerHTML = "";
+        updateTotal();
+    }
+
+    function generatePDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text("Invoice", 105, 20, { align: 'center' });
+
+        let y = 40;
+        doc.setFontSize(12);
+        doc.text("S.No", 20, y);
+        doc.text("Product", 40, y);
+        doc.text("Image", 100, y);
+        doc.text("Price", 140, y);
+        doc.text("Qty", 170, y);
+        doc.text("Total", 190, y);
+        y += 10;
+
+        products.forEach((p, i) => {
+            doc.text(`${i+1}`, 20, y);
+            doc.text(`${p.name}`, 40, y);
+            // Add image if available
+            if (p.image) {
+                doc.addImage(p.image, 'JPEG', 100, y - 5, 20, 20); // Adjust position and size
+            }
+            doc.text(`${p.price}`, 140, y);
+            doc.text(`${p.quantity}`, 170, y);
+            doc.text(`${p.total}`, 190, y);
+            y += 25; // Increase y for next row to accommodate image
+        });
+
+        y += 10;
+        doc.setFontSize(14);
+        doc.text(`Grand Total: Rs. ${products.reduce((s, p) => s + p.total, 0)}`, 20, y);
+
+        doc.save("invoice.pdf");
+    }
+
+    function toggleTheme() {
+        document.body.classList.toggle("dark");
+        localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+    }
+
+    if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark");
+    }
+</script>
+
+</body>
+</html>
